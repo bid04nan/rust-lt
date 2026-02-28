@@ -1,0 +1,92 @@
+# Apache Kafka Load Test
+name: Kafka Producer/Consumer Test
+description: High-throughput Kafka message publishing and consumption
+
+protocols:
+  kafka:
+    bootstrap_servers:
+      - localhost:9092
+      - localhost:9093
+    producer:
+      acks: all
+      compression: snappy
+      batch_size: 16384
+      linger_ms: 10
+      max_in_flight: 5
+    consumer:
+      group_id: rust-lt-consumer-group
+      auto_offset_reset: earliest
+      enable_auto_commit: true
+
+load_model:
+  type: constant_users_per_sec
+  rate: 100                    # 100 messages per second
+  duration: 10m
+
+feeders:
+  - type: json
+    name: events
+    path: data/kafka_events.json
+    strategy: random
+
+flow:
+  # Produce message to topic
+  - type: kafka_request
+    name: Produce Order Event
+    action: produce
+    topic: orders
+    partition: -1              # Auto-select partition
+    key: "{{customer_id}}"
+    value:
+      orderId: "{{order_id}}"
+      customerId: "{{customer_id}}"
+      amount: "{{amount}}"
+      timestamp: "{{timestamp}}"
+      eventType: ORDER_CREATED
+    headers:
+      source: rust-lt
+      version: "1.0"
+    validations:
+      - type: send_success
+        value: true
+      - type: response_time
+        max: 100ms
+
+  # Produce to multiple partitions
+  - type: repeat
+    times: 3
+    steps:
+      - type: kafka_request
+        name: Produce Inventory Update
+        action: produce
+        topic: inventory
+        partition: "{{partition_number}}"
+        key: "{{product_id}}"
+        value:
+          productId: "{{product_id}}"
+          quantity: "{{quantity}}"
+          warehouse: "{{warehouse_id}}"
+        validations:
+          - type: send_success
+            value: true
+      
+      - type: wait
+        duration: 50ms
+
+  # Produce with transactional semantics
+  - type: kafka_request
+    name: Produce Transactional
+    action: produce
+    topic: payments
+    transaction_id: "payment-tx-{{order_id}}"
+    key: "{{payment_id}}"
+    value:
+      paymentId: "{{payment_id}}"
+      orderId: "{{order_id}}"
+      amount: "{{amount}}"
+      status: pending
+    validations:
+      - type: send_success
+        value: true
+      - type: transaction_success
+        value: true

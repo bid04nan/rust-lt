@@ -1,0 +1,16 @@
+user_id,username,auth_token,room_id
+WS-U001,alice_chat,eyJhbGc.alice.token,room-general
+WS-U002,bob_messages,eyJhbGc.bob.token,room-tech
+WS-U003,charlie_ws,eyJhbGc.charlie.token,room-general
+WS-U004,diana_online,eyJhbGc.diana.token,room-support
+WS-U005,edward_chat,eyJhbGc.edward.token,room-random
+WS-U006,fiona_talks,eyJhbGc.fiona.token,room-general
+WS-U007,george_ws,eyJhbGc.george.token,room-tech
+WS-U008,hannah_msgs,eyJhbGc.hannah.token,room-gaming
+WS-U009,ivan_chats,eyJhbGc.ivan.token,room-general
+WS-U010,jane_online,eyJhbGc.jane.token,room-support
+WS-U011,kevin_talk,eyJhbGc.kevin.token,room-random
+WS-U012,laura_ws,eyJhbGc.laura.token,room-tech
+WS-U013,michael_chat,eyJhbGc.michael.token,room-general
+WS-U014,nancy_msgs,eyJhbGc.nancy.token,room-gaming
+WS-U015,oscar_online,eyJhbGc.oscar.token,room-support

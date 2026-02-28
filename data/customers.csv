@@ -1,0 +1,16 @@
+customer_id,customer_name,email,order_amount
+CUST-1001,John Smith,john.smith@example.com,149.99
+CUST-1002,Jane Doe,jane.doe@example.com,299.50
+CUST-1003,Bob Johnson,bob.j@example.com,89.99
+CUST-1004,Alice Williams,alice.w@example.com,499.00
+CUST-1005,Charlie Brown,charlie.b@example.com,199.99
+CUST-1006,Diana Prince,diana.p@example.com,349.99
+CUST-1007,Edward Norton,ed.norton@example.com,129.50
+CUST-1008,Fiona Green,fiona.g@example.com,79.99
+CUST-1009,George Lucas,george.l@example.com,599.00
+CUST-1010,Hannah Montana,hannah.m@example.com,249.99
+CUST-1011,Ivan Drago,ivan.d@example.com,399.99
+CUST-1012,Julia Roberts,julia.r@example.com,159.99
+CUST-1013,Kevin Hart,kevin.h@example.com,99.99
+CUST-1014,Laura Palmer,laura.p@example.com,449.00
+CUST-1015,Michael Scott,michael.s@example.com,189.99

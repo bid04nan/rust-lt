@@ -1,0 +1,122 @@
+# HTTP REST API - Closed Model (Fixed User Count, Ramp-Up)
+name: REST API Load Test
+description: E-commerce REST API with user authentication and product operations
+
+protocols:
+  http:
+    base_url: https://api.example.com
+    headers:
+      Accept: application/json
+      User-Agent: rust-lt/1.0
+    timeout: 30s
+    follow_redirects: true
+    max_redirects: 5
+
+load_model:
+  type: ramp_up
+  users: 100
+  duration: 5m
+  ramp_up_time: 2m
+
+feeders:
+  - type: csv
+    name: users
+    path: data/users.csv
+    strategy: cyclic
+  
+  - type: csv
+    name: products
+    path: data/products.csv
+    strategy: random
+
+flow:
+  # User Login
+  - type: http_request
+    name: Login
+    method: POST
+    path: /auth/login
+    headers:
+      Content-Type: application/json
+    body:
+      username: "{{username}}"
+      password: "{{password}}"
+    validations:
+      - type: status_code
+        value: 200
+    extractions:
+      - type: json_path
+        path: $.token
+        target_var: auth_token
+
+  - type: wait
+    duration: 1s
+
+  # Browse Products (Repeat)
+  - type: repeat
+    times: 5
+    steps:
+      - type: http_request
+        name: Get Product
+        method: GET
+        path: /products/{{product_id}}
+        headers:
+          Authorization: Bearer {{auth_token}}
+        validations:
+          - type: status_code
+            value: 200
+          - type: json_path
+            path: $.id
+            exists: true
+      
+      - type: wait
+        duration: 500ms
+
+  # Add to Cart Loop (During)
+  - type: during
+    duration: 10s
+    steps:
+      - type: http_request
+        name: Add to Cart
+        method: POST
+        path: /cart/items
+        headers:
+          Authorization: Bearer {{auth_token}}
+          Content-Type: application/json
+        body:
+          product_id: "{{product_id}}"
+          quantity: 1
+        validations:
+          - type: status_code
+            value: 201
+      
+      - type: wait
+        duration: 2s
+
+  # Checkout
+  - type: http_request
+    name: Checkout
+    method: POST
+    path: /orders/checkout
+    headers:
+      Authorization: Bearer {{auth_token}}
+      Content-Type: application/json
+    body:
+      payment_method: credit_card
+    validations:
+      - type: status_code
+        value: 200
+    extractions:
+      - type: json_path
+        path: $.order_id
+        target_var: order_id
+
+  # Logout
+  - type: http_request
+    name: Logout
+    method: POST
+    path: /auth/logout
+    headers:
+      Authorization: Bearer {{auth_token}}
+    validations:
+      - type: status_code
+        value: 204

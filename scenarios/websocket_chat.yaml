@@ -1,0 +1,111 @@
+# WebSocket Real-Time Test
+name: WebSocket Chat Application Test
+description: Real-time WebSocket connection test for chat/streaming
+
+protocols:
+  websocket:
+    url: wss://chat.example.com/ws
+    headers:
+      Origin: https://chat.example.com
+    subprotocols:
+      - chat-v1
+    ping_interval: 30s
+    connection_timeout: 10s
+
+load_model:
+  type: ramp_up
+  users: 500
+  duration: 10m
+  ramp_up_time: 3m
+
+feeders:
+  - type: csv
+    name: users
+    path: data/chat_users.csv
+    strategy: cyclic
+  
+  - type: csv
+    name: messages
+    path: data/chat_messages.csv
+    strategy: random
+
+flow:
+  # Connect and authenticate
+  - type: ws_connect
+    name: WebSocket Connect
+    validations:
+      - type: connection_established
+        value: true
+
+  - type: ws_send
+    name: Authenticate
+    message:
+      type: auth
+      token: "{{auth_token}}"
+      userId: "{{user_id}}"
+    validations:
+      - type: send_success
+        value: true
+
+  # Wait for auth response
+  - type: ws_receive
+    name: Auth Response
+    timeout: 5s
+    validations:
+      - type: message_received
+        value: true
+      - type: json_path
+        path: $.type
+        equals: auth_success
+    extractions:
+      - type: json_path
+        path: $.sessionId
+        target_var: session_id
+
+  # Join chat room
+  - type: ws_send
+    name: Join Room
+    message:
+      type: join
+      roomId: "{{room_id}}"
+      sessionId: "{{session_id}}"
+
+  # Send messages in loop
+  - type: during
+    duration: 5m
+    steps:
+      - type: ws_send
+        name: Send Chat Message
+        message:
+          type: message
+          roomId: "{{room_id}}"
+          text: "{{message_text}}"
+          timestamp: "{{timestamp}}"
+        validations:
+          - type: send_success
+            value: true
+      
+      - type: wait
+        duration: 3s
+      
+      # Check for incoming messages
+      - type: ws_receive
+        name: Receive Messages
+        timeout: 2s
+        check_all: true
+        extractions:
+          - type: message_count
+            target_var: received_count
+
+  # Leave room and disconnect
+  - type: ws_send
+    name: Leave Room
+    message:
+      type: leave
+      roomId: "{{room_id}}"
+
+  - type: ws_close
+    name: Close Connection
+    validations:
+      - type: close_success
+        value: true

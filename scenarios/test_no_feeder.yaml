@@ -1,0 +1,20 @@
+scenario:
+  name: Simple Test Without Feeder
+  base_url: http://127.0.0.1:8000
+
+  load_model:
+    type: constant
+    duration: 10s
+    users: 2
+
+  flow:
+    - type: http_request
+      name: 1_Base_Path_Check
+      method: GET
+      path: /
+      validations:
+        - type: status_code
+          value: 200
+
+    - type: wait
+      duration: 100ms

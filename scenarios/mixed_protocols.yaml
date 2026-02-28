@@ -1,0 +1,111 @@
+# Mixed Protocol - Microservices E2E Test
+name: Microservices End-to-End Test
+description: Complete user journey across HTTP, Kafka, and Database
+
+protocols:
+  http:
+    base_url: https://api.example.com
+    timeout: 30s
+  
+  kafka:
+    bootstrap_servers:
+      - localhost:9092
+    producer:
+      acks: 1
+  
+  jdbc:
+    connection_string: jdbc:postgresql://localhost:5432/orders
+    username: app_user
+    password: app_pass
+
+load_model:
+  type: at_once_users        # Spike test: all users at once
+  users: 200
+
+feeders:
+  - type: csv
+    name: users
+    path: data/users.csv
+    strategy: cyclic
+
+flow:
+  # Step 1: HTTP - Create order via REST API
+  - type: http_request
+    name: Create Order API
+    method: POST
+    path: /orders
+    headers:
+      Authorization: Bearer {{token}}
+      Content-Type: application/json
+    body:
+      customerId: "{{customer_id}}"
+      items:
+        - productId: "{{product_id}}"
+          quantity: 2
+    validations:
+      - type: status_code
+        value: 201
+    extractions:
+      - type: json_path
+        path: $.orderId
+        target_var: order_id
+
+  - type: wait
+    duration: 1s
+
+  # Step 2: Kafka - Publish order event
+  - type: kafka_request
+    name: Publish Order Event
+    action: produce
+    topic: order-events
+    key: "{{order_id}}"
+    value:
+      orderId: "{{order_id}}"
+      customerId: "{{customer_id}}"
+      status: CREATED
+      timestamp: "{{timestamp}}"
+    validations:
+      - type: send_success
+        value: true
+
+  - type: wait
+    duration: 2s
+
+  # Step 3: Database - Verify order in DB
+  - type: jdbc_request
+    name: Verify Order in DB
+    query: SELECT * FROM orders WHERE order_id = ?
+    params:
+      - "{{order_id}}"
+    validations:
+      - type: result_count
+        value: 1
+    extractions:
+      - type: column
+        name: status
+        target_var: db_status
+
+  # Step 4: HTTP - Update order status
+  - type: http_request
+    name: Update Order Status
+    method: PATCH
+    path: /orders/{{order_id}}/status
+    headers:
+      Authorization: Bearer {{token}}
+      Content-Type: application/json
+    body:
+      status: PROCESSING
+    validations:
+      - type: status_code
+        value: 200
+
+  # Step 5: Database - Verify status update
+  - type: jdbc_request
+    name: Verify Status Update
+    query: SELECT status FROM orders WHERE order_id = ?
+    params:
+      - "{{order_id}}"
+    validations:
+      - type: column_value
+        name: status
+        equals: PROCESSING

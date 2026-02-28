@@ -1,0 +1,92 @@
+# JMS Message Queue Test
+name: JMS Queue Load Test
+description: Message producer and consumer testing for ActiveMQ/RabbitMQ
+
+protocols:
+  jms:
+    broker_url: tcp://localhost:61616
+    username: admin
+    password: admin
+    connection:
+      client_id: rust-lt-client
+      session_transacted: false
+      session_mode: AUTO_ACKNOWLEDGE
+
+load_model:
+  type: heaviside_users          # Sudden spike pattern
+  initial_users: 10
+  peak_users: 100
+  spike_duration: 30s
+  hold_duration: 2m
+  total_duration: 5m
+
+feeders:
+  - type: json
+    name: messages
+    path: data/jms_messages.json
+    strategy: random
+
+flow:
+  # Send message to Queue
+  - type: jms_request
+    name: Send to Order Queue
+    destination:
+      type: queue
+      name: orders.processing
+    message:
+      type: text
+      body: |
+        {
+          "orderId": "{{order_id}}",
+          "customerId": "{{customer_id}}",
+          "items": {{items_json}},
+          "timestamp": "{{timestamp}}"
+        }
+      properties:
+        JMSCorrelationID: "{{correlation_id}}"
+        priority: 4
+    validations:
+      - type: send_success
+        value: true
+
+  - type: wait
+    duration: 500ms
+
+  # Publish to Topic
+  - type: jms_request
+    name: Publish Order Event
+    destination:
+      type: topic
+      name: orders.events
+    message:
+      type: text
+      body: |
+        {
+          "eventType": "ORDER_CREATED",
+          "orderId": "{{order_id}}",
+          "timestamp": "{{timestamp}}"
+        }
+    validations:
+      - type: send_success
+        value: true
+
+  # Request-Reply Pattern
+  - type: jms_request
+    name: Request Order Status
+    destination:
+      type: queue
+      name: orders.status.request
+    reply_to: orders.status.response
+    message:
+      type: text
+      body: '{"orderId": "{{order_id}}"}'
+    timeout: 5s
+    validations:
+      - type: reply_received
+        value: true
+      - type: response_time
+        max: 3s
+    extractions:
+      - type: json_path
+        path: $.status
+        target_var: order_status

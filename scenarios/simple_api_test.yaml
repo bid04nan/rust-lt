@@ -1,0 +1,39 @@
+scenario:
+  name: Simple Two-Step API Test
+
+  load_model:
+    type: constant
+    duration: 30
+    users: 5
+
+  feeders:
+    name_data:
+      type: csv
+      name: name
+      path: data/names.csv
+      strategy: cyclic
+
+  steps:
+    - action: feed
+      feeder: name_data
+
+    - action: request
+      protocol: http_request
+      name: 1_Base_Path_Check
+      method: GET
+      url: http://127.0.0.1:8000/
+      checks:
+        - type: status
+          expected: 200
+
+    - action: wait
+      duration: 100
+
+    - action: request
+      protocol: http_request
+      name: 2_Greet_Dynamic_Path
+      method: GET
+      url: http://127.0.0.1:8000/greet/{{name}}
+      checks:
+        - type: status
+          expected: 200

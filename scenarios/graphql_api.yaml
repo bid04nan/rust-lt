@@ -1,0 +1,85 @@
+# GraphQL API Test
+name: GraphQL API Test
+description: GraphQL query and mutation testing with variables
+
+protocols:
+  http:
+    base_url: https://graphql.example.com
+    headers:
+      Content-Type: application/json
+    timeout: 15s
+
+load_model:
+  type: ramp_users_per_sec
+  from_rate: 5
+  to_rate: 50
+  duration: 5m
+  ramp_duration: 2m
+
+feeders:
+  - type: csv
+    name: users
+    path: data/users.csv
+    strategy: cyclic
+
+flow:
+  # GraphQL Query
+  - type: http_request
+    name: Get User Query
+    method: POST
+    path: /graphql
+    body:
+      query: |
+        query GetUser($id: ID!) {
+          user(id: $id) {
+            id
+            name
+            email
+            orders {
+              id
+              total
+              status
+            }
+          }
+        }
+      variables:
+        id: "{{user_id}}"
+    validations:
+      - type: status_code
+        value: 200
+      - type: json_path
+        path: $.data.user.id
+        exists: true
+    extractions:
+      - type: json_path
+        path: $.data.user.name
+        target_var: user_name
+
+  - type: wait
+    duration: 500ms
+
+  # GraphQL Mutation
+  - type: http_request
+    name: Create Order Mutation
+    method: POST
+    path: /graphql
+    body:
+      query: |
+        mutation CreateOrder($userId: ID!, $items: [OrderItemInput!]!) {
+          createOrder(userId: $userId, items: $items) {
+            id
+            total
+            status
+          }
+        }
+      variables:
+        userId: "{{user_id}}"
+        items:
+          - productId: "{{product_id}}"
+            quantity: 2
+    validations:
+      - type: status_code
+        value: 200
+      - type: json_path
+        path: $.data.createOrder.id
+        exists: true

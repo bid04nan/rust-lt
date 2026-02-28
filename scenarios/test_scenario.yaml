@@ -1,0 +1,56 @@
+# Simple Scenario for Testing Deserialization
+name: Simple Test Scenario
+description: Basic scenario for unit testing
+
+load_model:
+  type: ramp_up
+  users: 10
+  duration: 60
+
+feeders:
+  test_users:
+    name: test_users
+    type: csv
+    path: data/users.csv
+    strategy: cyclic
+
+variables:
+  base_url: https://api.example.com
+  api_version: v1
+
+steps:
+  - action: feed
+    feeder: test_users
+
+  - action: http_request
+    name: Get User Profile
+    method: GET
+    url: "{{base_url}}/{{api_version}}/users/{{username}}"
+    headers:
+      Authorization: "Bearer {{token}}"
+    checks:
+      - type: status
+        expected: 200
+      - type: body_contains
+        text: "user_id"
+    extractions:
+      - type: json_path
+        path: $.id
+        save_as: user_id
+
+  - action: wait
+    duration: 1000
+
+  - action: repeat
+    times: 3
+    steps:
+      - action: http_request
+        name: Get Products
+        method: GET
+        url: "{{base_url}}/{{api_version}}/products"
+        checks:
+          - type: status
+            expected: 200
+
+max_duration: 300
+think_time: 500

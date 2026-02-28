@@ -1,0 +1,572 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Test Report Dashboard</title>
+    <link rel="stylesheet" href="style.css">
+    <script src="chart.min.js"></script>
+    <script src="live.js"></script>
+    <!-- Load Chart.js: prefer a local copy (chart.min.js) served from the template folder.
+         If it's not present, fall back to the CDN. This avoids browser Tracking
+         Prevention blocking the CDN from stopping Chart.js from loading. -->
+    <style>
+        /* JSON viewer styles */
+        .json-viewer {
+            position: fixed;
+            right: 12px;
+            bottom: 12px;
+            width: 520px;
+            max-height: 60vh;
+            background: rgba(24,24,24,0.95);
+            color: #e6e6e6;
+            border: 1px solid rgba(255,255,255,0.06);
+            border-radius: 8px;
+            box-shadow: 0 6px 18px rgba(0,0,0,0.35);
+            font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, "Roboto Mono", "Courier New", monospace;
+            display: flex;
+            flex-direction: column;
+            overflow: hidden;
+            z-index: 9999;
+            transition: transform 160ms ease, opacity 160ms ease;
+        }
+        .json-viewer.collapsed { transform: translateY(88%); opacity: 0.85; }
+        .json-header {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 8px 10px;
+            background: linear-gradient(180deg, rgba(255,255,255,0.02), rgba(0,0,0,0.03));
+            border-bottom: 1px solid rgba(255,255,255,0.02);
+        }
+        .json-header > span { font-size: 13px; font-weight: 600; }
+        .json-controls { display: flex; gap: 6px; align-items: center; }
+        .json-controls button { background: rgba(255,255,255,0.04); color: inherit; border: 0; padding: 6px 8px; border-radius: 5px; cursor: pointer; font-size: 12px; }
+        .json-controls label { font-size: 12px; display: flex; gap: 6px; align-items: center; }
+        .json-body { padding: 8px; overflow: auto; flex: 1 1 auto; }
+        .json-content { white-space: pre; font-size: 12px; line-height: 1.35; margin: 0; }
+        .json-footer { padding: 6px 8px; font-size: 12px; color: rgba(255,255,255,0.6); border-top: 1px solid rgba(255,255,255,0.02); }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>🦀 Rust_lt | Test Report</h1>
+        </div>
+
+        <div class="info-section">
+            <div class="info-item">
+                <label>📋 Scenario Name</label>
+                <div id="scenarioName" class="value">Load Test Scenario 1</div>
+            </div>
+            <div class="info-item">
+                <label>⏱️ Start Time</label>
+                <div class="value">00:15:30</div>
+            </div>
+        </div>
+
+        <div class="filters-section">
+            <div class="filters-left">
+                <div class="toggle-badge">
+                    <button class="toggle-option active" onclick="toggleView('chart')">📊 Chart</button>
+                    <button class="toggle-option" onclick="toggleView('table')">📋 Table</button>
+                </div>
+                <select class="dropdown" id="scenarioFilter">
+                    <option>🎬 Scenario 1</option>
+                    <option>🎬 Scenario 2</option>
+                    <option>🎬 Scenario 3</option>
+                </select>
+                <select class="dropdown" id="requestFilter">
+                    <option>🌐 All Requests</option>
+                    <option>📥 GET /api/users</option>
+                    <option>📤 POST /api/data</option>
+                </select>
+            </div>
+            <!-- Refresh interval selector drives dynamic polling of /live_stats.json -->
+            <select class="dropdown" id="refreshInterval" onchange="updateRefreshInterval(this.value)">
+                <option value="">🔄 Refresh Interval</option>
+                <option value="1000">⚡ 1s</option>
+                <option value="2000">⚡ 2s</option>
+                <option value="5000" selected>🕐 5s</option>
+                <option value="10000">🕐 10s</option>
+            </select>
+        </div>
+
+        <div class="metrics-grid">
+            <div class="metric-card">
+                <div class="metric-label">❌ Error Rate</div>
+                <div id="metricErrorRate" class="metric-value">0.0%</div>
+            </div>
+            <div class="metric-card">
+                <div class="metric-label">⚡ TPS</div>
+                <div id="metricTps" class="metric-value">0</div>
+            </div>
+            <div class="metric-card">
+                <div class="metric-label">📊 Total Requests</div>
+                <div id="metricTotalRequests" class="metric-value">0</div>
+            </div>
+            <div class="metric-card">
+                <div class="metric-label">👥 Max VUsers</div>
+                <div id="metricMaxVUsers" class="metric-value">0</div>
+            </div>
+            <div class="metric-card">
+                <div class="metric-label">🟰 Avg Response Time</div>
+                <div id="metricAvgRt" class="metric-value">0ms</div>
+            </div>
+            <div class="metric-card">
+                <div class="metric-label">⏲️ P95 Response Time</div>
+                <div id="metricP95" class="metric-value">0ms</div>
+            </div>
+            <div class="metric-card">
+                <div class="metric-label">⏱️ Test Duration</div>
+                <div id="metricDuration" class="metric-value">0m 0s</div>
+            </div>
+        </div>
+
+        <!-- Section 1: Request/Response -->
+        <div class="section">
+            <div class="section-header">🔄 Request/Response</div>
+            
+            <div class="chart-view">
+                <div class="charts-row">
+                    <div class="chart-container">
+                        <div class="chart-header">
+                            <div class="chart-title">📨 Requests and Responses per second</div>
+                            <button class="expand-btn" onclick="expandChart('reqRespChart', 'Requests and Responses per second')">⛶</button>
+                        </div>
+                        <div class="chart-wrapper">
+                            <canvas id="reqRespChart"></canvas>
+                        </div>
+                    </div>
+                    <div class="chart-container">
+                        <div class="chart-header">
+                            <div class="chart-title">✅ Responses per second by status</div>
+                            <button class="expand-btn" onclick="expandChart('respStatusChart', 'Responses per second by status')">⛶</button>
+                        </div>
+                        <div class="chart-wrapper">
+                            <canvas id="respStatusChart"></canvas>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="charts-row">
+                    <div class="chart-container">
+                        <div class="chart-header">
+                            <div class="chart-title">⏱️ Response time Percentiles</div>
+                            <button class="expand-btn" onclick="expandChart('respTimeChart', 'Response time Percentiles')">⛶</button>
+                        </div>
+                        <div class="chart-wrapper">
+                            <canvas id="respTimeChart"></canvas>
+                        </div>
+                    </div>
+                    <div class="chart-container">
+                        <div class="chart-header">
+                            <div class="chart-title">⚠️ Errors per second</div>
+                            <button class="expand-btn" onclick="expandChart('errorsChart', 'Errors per second')">⛶</button>
+                        </div>
+                        <div class="chart-wrapper">
+                            <canvas id="errorsChart"></canvas>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="table-view">
+                <h3>Request/Response Data</h3>
+                <table class="data-table">
+                    <thead>
+                        <tr>
+                            <th>Time</th>
+                            <th>Requests/s</th>
+                            <th>Responses/s</th>
+                            <th>2xx Status</th>
+                            <th>4xx Status</th>
+                            <th>5xx Status</th>
+                        </tr>
+                    </thead>
+                    <tbody id="reqRespTable"></tbody>
+                </table>
+            </div>
+        </div>
+
+        <!-- Section 2: Users -->
+        <div class="section">
+            <div class="section-header">👥 Users</div>
+            
+            <div class="chart-view">
+                <div class="charts-row">
+                    <div class="chart-container">
+                        <div class="chart-header">
+                            <div class="chart-title">👤 Users arrival rate</div>
+                            <button class="expand-btn" onclick="expandChart('arrivalChart', 'Users arrival rate')">⛶</button>
+                        </div>
+                        <div class="chart-wrapper">
+                            <canvas id="arrivalChart"></canvas>
+                        </div>
+                    </div>
+                    <div class="chart-container">
+                        <div class="chart-header">
+                            <div class="chart-title">🚪 User Termination Rate</div>
+                            <button class="expand-btn" onclick="expandChart('terminationChart', 'User Termination Rate')">⛶</button>
+                        </div>
+                        <div class="chart-wrapper">
+                            <canvas id="terminationChart"></canvas>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="charts-row">
+                    <div class="chart-container chart-full">
+                        <div class="chart-header">
+                            <div class="chart-title">👥 Concurrent users</div>
+                            <button class="expand-btn" onclick="expandChart('concurrentChart', 'Concurrent users')">⛶</button>
+                        </div>
+                        <div class="chart-wrapper">
+                            <canvas id="concurrentChart"></canvas>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="table-view">
+                <h3>Users Data</h3>
+                <table class="data-table">
+                    <thead>
+                        <tr>
+                            <th>Time</th>
+                            <th>Arrival Rate</th>
+                            <th>Termination Rate</th>
+                            <th>Concurrent Users</th>
+                        </tr>
+                    </thead>
+                    <tbody id="usersTable"></tbody>
+                </table>
+            </div>
+        </div>
+
+        <!-- Section 3: Connections -->
+        <div class="section">
+            <div class="section-header">🔌 Connections</div>
+            
+            <div class="chart-view">
+                <div class="charts-row">
+                    <div class="chart-container">
+                        <div class="chart-header">
+                            <div class="chart-title">🔌 Connection Open/Close Rate</div>
+                            <button class="expand-btn" onclick="expandChart('connOpenCloseChart', 'Connection Open/Close Rate')">⛶</button>
+                        </div>
+                        <div class="chart-wrapper">
+                            <canvas id="connOpenCloseChart"></canvas>
+                        </div>
+                    </div>
+                    <div class="chart-container">
+                        <div class="chart-header">
+                            <div class="chart-title">🔗 TCP Connection by state</div>
+                            <button class="expand-btn" onclick="expandChart('tcpStateChart', 'TCP Connection by state')">⛶</button>
+                        </div>
+                        <div class="chart-wrapper">
+                            <canvas id="tcpStateChart"></canvas>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="charts-row">
+                    <div class="chart-container">
+                        <div class="chart-header">
+                            <div class="chart-title">⏲️ TCP Connect Duration Percentile</div>
+                            <button class="expand-btn" onclick="expandChart('tcpDurationChart', 'TCP Connect Duration Percentile')">⛶</button>
+                        </div>
+                        <div class="chart-wrapper">
+                            <canvas id="tcpDurationChart"></canvas>
+                        </div>
+                    </div>
+                    <div class="chart-container">
+                        <div class="chart-header">
+                            <div class="chart-title">🔒 TLS Handshake Duration Percentile</div>
+                            <button class="expand-btn" onclick="expandChart('tlsChart', 'TLS Handshake Duration Percentile')">⛶</button>
+                        </div>
+                        <div class="chart-wrapper">
+                            <canvas id="tlsChart"></canvas>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="charts-row">
+                    <div class="chart-container chart-full">
+                        <div class="chart-header">
+                            <div class="chart-title">📡 Bandwidth Usage</div>
+                            <button class="expand-btn" onclick="expandChart('bandwidthChart', 'Bandwidth Usage')">⛶</button>
+                        </div>
+                        <div class="chart-wrapper">
+                            <canvas id="bandwidthChart"></canvas>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="table-view">
+                <h3>Connections Data</h3>
+                <table class="data-table">
+                    <thead>
+                        <tr>
+                            <th>Time</th>
+                            <th>Open Rate</th>
+                            <th>Close Rate</th>
+                            <th>TCP States</th>
+                            <th>Bandwidth (MB/s)</th>
+                        </tr>
+                    </thead>
+                    <tbody id="connectionsTable"></tbody>
+                </table>
+            </div>
+        </div>
+
+        <!-- Section 4: DNS -->
+        <div class="section">
+            <div class="section-header">🌐 DNS</div>
+            
+            <div class="filters-section" style="margin-bottom: 20px;">
+                <label style="margin-right: 10px;">🖥️ Hostname:</label>
+                <select class="dropdown" id="hostnameFilter">
+                    <option>api.example.com</option>
+                    <option>cdn.example.com</option>
+                    <option>auth.example.com</option>
+                </select>
+            </div>
+
+            <div class="chart-view">
+                <div class="charts-row">
+                    <div class="chart-container">
+                        <div class="chart-header">
+                            <div class="chart-title">🌐 DNS Resolution Per Second</div>
+                            <button class="expand-btn" onclick="expandChart('dnsResChart', 'DNS Resolution Per Second')">⛶</button>
+                        </div>
+                        <div class="chart-wrapper">
+                            <canvas id="dnsResChart"></canvas>
+                        </div>
+                    </div>
+                    <div class="chart-container">
+                        <div class="chart-header">
+                            <div class="chart-title">⏱️ DNS Resolution Duration Percentile</div>
+                            <button class="expand-btn" onclick="expandChart('dnsDurationChart', 'DNS Resolution Duration Percentile')">⛶</button>
+                        </div>
+                        <div class="chart-wrapper">
+                            <canvas id="dnsDurationChart"></canvas>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="table-view">
+                <h3>DNS Data</h3>
+                <table class="data-table">
+                    <thead>
+                        <tr>
+                            <th>Time</th>
+                            <th>Resolutions/s</th>
+                            <th>P50 Duration</th>
+                            <th>P95 Duration</th>
+                            <th>P99 Duration</th>
+                        </tr>
+                    </thead>
+                    <tbody id="dnsTable"></tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+
+    <!-- Modal for expanded chart -->
+    <div id="chartModal" class="modal">
+        <div class="modal-content">
+            <button class="close-modal" onclick="closeModal()">&times;</button>
+            <h2 id="modalChartTitle"></h2>
+            <div class="modal-chart-wrapper">
+                <canvas id="modalChart"></canvas>
+            </div>
+        </div>
+    </div>
+
+        <!-- JSON viewer: shows incoming SSE payloads for debugging and inspection -->
+        <div id="jsonViewer" class="json-viewer collapsed" aria-hidden="true">
+            <div class="json-header">
+                <span>🔎 SSE payload viewer</span>
+                <div class="json-controls">
+                    <button id="jsonToggleBtn" title="Toggle viewer" onclick="toggleJsonViewer()">▶</button>
+                    <button title="Copy payload" onclick="copyJson()">Copy</button>
+                    <button title="Download payload" onclick="downloadJson()">Download</button>
+                    <label title="Auto-scroll">
+                        <input id="jsonAutoScroll" type="checkbox" checked /> Auto-scroll
+                    </label>
+                    <button title="Clear" onclick="clearJson()">Clear</button>
+                </div>
+            </div>
+            <div class="json-body">
+                <pre id="jsonViewerContent" class="json-content" role="region" aria-live="polite"></pre>
+            </div>
+            <div class="json-footer" id="jsonFooter">Waiting for SSE dashboard payloads…</div>
+        </div>
+
+    <script>
+        let __latestSseJson = null;
+        function toggleJsonViewer() {
+            const v = document.getElementById('jsonViewer');
+            const btn = document.getElementById('jsonToggleBtn');
+            if (!v) return;
+            v.classList.toggle('collapsed');
+            const collapsed = v.classList.contains('collapsed');
+            v.setAttribute('aria-hidden', collapsed ? 'true' : 'false');
+            if (btn) btn.textContent = collapsed ? '▶' : '▾';
+        }
+
+        function updateJsonViewer(obj) {
+            try {
+                const pre = document.getElementById('jsonViewerContent');
+                const footer = document.getElementById('jsonFooter');
+                if (!pre) return;
+                __latestSseJson = obj;
+                let s = '';
+                try { s = JSON.stringify(obj, null, 2); } catch (err) { s = String(obj); }
+                const MAX_CHARS = 200_000;
+                if (s.length > MAX_CHARS) {
+                    pre.textContent = s.slice(0, MAX_CHARS) + '\n\n...truncated (' + (s.length - MAX_CHARS) + ' chars)';
+                    if (footer) footer.textContent = 'Payload truncated for display (' + s.length + ' chars total)';
+                } else {
+                    pre.textContent = s;
+                    if (footer) footer.textContent = 'Rendered ' + (new Date()).toLocaleTimeString();
+                }
+                try {
+                    const auto = document.getElementById('jsonAutoScroll');
+                    if (auto && auto.checked) pre.parentElement.scrollTop = pre.parentElement.scrollHeight;
+                } catch (_) {}
+            } catch (err) { console.warn('updateJsonViewer failed', err); }
+        }
+
+        function copyJson() {
+            try {
+                const text = __latestSseJson ? JSON.stringify(__latestSseJson, null, 2) : (document.getElementById('jsonViewerContent') ? document.getElementById('jsonViewerContent').textContent : '');
+                if (navigator.clipboard && navigator.clipboard.writeText) {
+                    navigator.clipboard.writeText(text).then(() => { console.debug('JSON copied to clipboard'); });
+                } else {
+                    const ta = document.createElement('textarea');
+                    ta.value = text;
+                    document.body.appendChild(ta);
+                    ta.select();
+                    try { document.execCommand('copy'); } catch(_) {}
+                    ta.remove();
+                }
+            } catch (err) { console.warn('copyJson failed', err); }
+        }
+
+        function downloadJson() {
+            try {
+                const data = __latestSseJson ? JSON.stringify(__latestSseJson, null, 2) : (document.getElementById('jsonViewerContent') ? document.getElementById('jsonViewerContent').textContent : '');
+                const blob = new Blob([data], { type: 'application/json' });
+                const url = URL.createObjectURL(blob);
+                const a = document.createElement('a');
+                a.href = url;
+                a.download = 'sse-dashboard.json';
+                document.body.appendChild(a);
+                a.click();
+                URL.revokeObjectURL(url);
+                a.remove();
+            } catch (err) { console.warn('downloadJson failed', err); }
+        }
+
+        function clearJson() {
+            try { const pre = document.getElementById('jsonViewerContent'); if (pre) pre.textContent = ''; __latestSseJson = null; const footer = document.getElementById('jsonFooter'); if (footer) footer.textContent = 'Cleared'; } catch(_) {}
+        }
+        // ------------------------------
+        // Dynamic polling based on refresh interval select
+        // ------------------------------
+        let __pollTimer = null;
+        let __pollIntervalMs = 5000; // default fallback
+        let __maxActiveVUs = 0;
+        const refreshSelect = document.getElementById('refreshInterval');
+        if (refreshSelect) {
+            const sel = refreshSelect.value || refreshSelect.querySelector('option[selected]')?.value;
+            if (sel) __pollIntervalMs = parseInt(sel, 10) || __pollIntervalMs;
+        }
+
+        function updateRefreshInterval(val) {
+            const ms = parseInt(val, 10);
+            if (!isNaN(ms) && ms > 100) { // minimum guard
+                __pollIntervalMs = ms;
+                if (__pollTimer) {
+                    clearTimeout(__pollTimer);
+                    __pollTimer = null;
+                }
+                scheduleNextPoll();
+            }
+        }
+
+        function scheduleNextPoll() {
+            if (__pollTimer) return; // already scheduled by fetchStats completion
+            __pollTimer = setTimeout(fetchLiveStats, __pollIntervalMs);
+        }
+
+        function fetchLiveStats() {
+            __pollTimer = null; // clear so next can schedule
+            fetch('/live_stats.json', { cache: 'no-store' })
+                .then(r => r.ok ? r.json() : Promise.reject(new Error('HTTP ' + r.status)))
+                .then(data => {
+                    // Update scenario name
+                    const scenEl = document.getElementById('scenarioName');
+                    if (scenEl && data.scenario) scenEl.textContent = data.scenario;
+                    // Total requests
+                    const totalEl = document.getElementById('metricTotalRequests');
+                    if (totalEl && typeof data.total_requests === 'number') totalEl.textContent = data.total_requests;
+                    // Throughput (requests per second)
+                    const tpsEl = document.getElementById('metricTps');
+                    if (tpsEl && typeof data.throughput_rps === 'number') tpsEl.textContent = data.throughput_rps.toFixed(2);
+                    // Error rate
+                    const errEl = document.getElementById('metricErrorRate');
+                    if (errEl && typeof data.fail_count === 'number' && typeof data.total_requests === 'number' && data.total_requests > 0) {
+                        const er = (data.fail_count / data.total_requests) * 100.0;
+                        errEl.textContent = er.toFixed(2) + '%';
+                    } else if (errEl) { errEl.textContent = '0.00%'; }
+                    // Active / Max VUs
+                    if (typeof data.active_vus === 'number') {
+                        __maxActiveVUs = Math.max(__maxActiveVUs, data.active_vus);
+                        const maxEl = document.getElementById('metricMaxVUsers');
+                        if (maxEl) maxEl.textContent = __maxActiveVUs;
+                    }
+                    // Percentiles
+                    if (typeof data.p95_ms === 'number') {
+                        const p95El = document.getElementById('metricP95');
+                        if (p95El) p95El.textContent = Math.round(data.p95_ms) + 'ms';
+                    }
+                    // Average response time
+                    if (typeof data.avg_response_time === 'number') {
+                        const avgEl = document.getElementById('metricAvgRt');
+                        if (avgEl) avgEl.textContent = Math.round(data.avg_response_time) + 'ms';
+                    }
+                    // Duration (approx) using first seen timestamp stored client side
+                    updateDuration();
+                    // Optionally log full JSON to viewer
+                    updateJsonViewer(data);
+                })
+                .catch(err => { console.warn('poll /live_stats.json failed', err); })
+                .finally(() => { scheduleNextPoll(); });
+        }
+
+        let __firstFetchTime = null;
+        function updateDuration() {
+            const durEl = document.getElementById('metricDuration');
+            if (!durEl) return;
+            if (!__firstFetchTime) { __firstFetchTime = Date.now(); durEl.textContent = '0m 0s'; return; }
+            const deltaMs = Date.now() - __firstFetchTime;
+            const secs = Math.floor(deltaMs / 1000);
+            const mins = Math.floor(secs / 60);
+            const rem = secs % 60;
+            durEl.textContent = mins + 'm ' + rem + 's';
+        }
+
+        // Kick off initial poll shortly after load for perceived responsiveness
+        window.addEventListener('load', () => {
+            setTimeout(fetchLiveStats, 250);
+        });
+        // Expose globally for inline onchange handler safety
+        window.updateRefreshInterval = updateRefreshInterval;
+    </script>
+</body>
+</html>

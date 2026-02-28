@@ -1,0 +1,16 @@
+api_key,search_term,item_id
+sk_test_abc123def456,laptop,ITM-1001
+sk_test_xyz789ghi012,smartphone,ITM-1002
+sk_test_jkl345mno678,headphones,ITM-1003
+sk_test_pqr901stu234,camera,ITM-1004
+sk_test_vwx567yza890,tablet,ITM-1005
+sk_test_bcd123efg456,monitor,ITM-1006
+sk_test_hij789klm012,keyboard,ITM-1007
+sk_test_nop345qrs678,mouse,ITM-1008
+sk_test_tuv901wxy234,speaker,ITM-1009
+sk_test_zab567cde890,webcam,ITM-1010
+sk_test_fgh123ijk456,microphone,ITM-1011
+sk_test_lmn789opq012,router,ITM-1012
+sk_test_rst345uvw678,printer,ITM-1013
+sk_test_xyz901abc234,scanner,ITM-1014
+sk_test_def567ghi890,charger,ITM-1015

@@ -1,0 +1,68 @@
+[
+  {
+    "order_id": "ORD-K001",
+    "customer_id": "CUST-1001",
+    "amount": "149.99",
+    "timestamp": "2025-11-29T10:00:00Z",
+    "product_id": "PROD-001",
+    "quantity": 100,
+    "warehouse_id": "WH-EAST",
+    "partition_number": 0,
+    "payment_id": "PAY-001"
+  },
+  {
+    "order_id": "ORD-K002",
+    "customer_id": "CUST-1002",
+    "amount": "299.50",
+    "timestamp": "2025-11-29T10:01:00Z",
+    "product_id": "PROD-002",
+    "quantity": 75,
+    "warehouse_id": "WH-WEST",
+    "partition_number": 1,
+    "payment_id": "PAY-002"
+  },
+  {
+    "order_id": "ORD-K003",
+    "customer_id": "CUST-1003",
+    "amount": "89.99",
+    "timestamp": "2025-11-29T10:02:00Z",
+    "product_id": "PROD-003",
+    "quantity": 150,
+    "warehouse_id": "WH-CENTRAL",
+    "partition_number": 2,
+    "payment_id": "PAY-003"
+  },
+  {
+    "order_id": "ORD-K004",
+    "customer_id": "CUST-1004",
+    "amount": "499.00",
+    "timestamp": "2025-11-29T10:03:00Z",
+    "product_id": "PROD-004",
+    "quantity": 50,
+    "warehouse_id": "WH-SOUTH",
+    "partition_number": 0,
+    "payment_id": "PAY-004"
+  },
+  {
+    "order_id": "ORD-K005",
+    "customer_id": "CUST-1005",
+    "amount": "199.99",
+    "timestamp": "2025-11-29T10:04:00Z",
+    "product_id": "PROD-005",
+    "quantity": 200,
+    "warehouse_id": "WH-NORTH",
+    "partition_number": 1,
+    "payment_id": "PAY-005"
+  },
+  {
+    "order_id": "ORD-K006",
+    "customer_id": "CUST-1006",
+    "amount": "349.99",
+    "timestamp": "2025-11-29T10:05:00Z",
+    "product_id": "PROD-006",
+    "quantity": 125,
+    "warehouse_id": "WH-EAST",
+    "partition_number": 2,
+    "payment_id": "PAY-006"
+  }
+]

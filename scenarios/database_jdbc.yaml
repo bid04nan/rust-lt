@@ -1,0 +1,97 @@
+# Database Load Test (JDBC)
+name: Database Connection Pool Test
+description: High-volume database read/write operations
+
+protocols:
+  jdbc:
+    connection_string: jdbc:postgresql://localhost:5432/testdb
+    driver: postgresql
+    username: testuser
+    password: testpass
+    pool:
+      min_size: 10
+      max_size: 50
+      connection_timeout: 5s
+      idle_timeout: 10m
+
+load_model:
+  type: constant
+  users: 50
+  duration: 10m
+
+feeders:
+  - type: csv
+    name: customers
+    path: data/customers.csv
+    strategy: sequential
+
+flow:
+  # Read Query
+  - type: jdbc_request
+    name: Select Customer
+    query: SELECT * FROM customers WHERE id = ?
+    params:
+      - "{{customer_id}}"
+    validations:
+      - type: result_count
+        min: 1
+    extractions:
+      - type: column
+        name: email
+        target_var: customer_email
+
+  - type: wait
+    duration: 100ms
+
+  # Insert Query
+  - type: jdbc_request
+    name: Insert Order
+    query: |
+      INSERT INTO orders (customer_id, order_date, total_amount, status)
+      VALUES (?, NOW(), ?, 'pending')
+      RETURNING id
+    params:
+      - "{{customer_id}}"
+      - "{{order_amount}}"
+    validations:
+      - type: rows_affected
+        value: 1
+    extractions:
+      - type: column
+        name: id
+        target_var: order_id
+
+  # Update Query
+  - type: jdbc_request
+    name: Update Order Status
+    query: UPDATE orders SET status = 'completed' WHERE id = ?
+    params:
+      - "{{order_id}}"
+    validations:
+      - type: rows_affected
+        value: 1
+
+  # Complex Join Query
+  - type: jdbc_request
+    name: Get Order Details
+    query: |
+      SELECT o.*, c.name, c.email, oi.product_id, oi.quantity
+      FROM orders o
+      JOIN customers c ON o.customer_id = c.id
+      JOIN order_items oi ON o.id = oi.order_id
+      WHERE o.id = ?
+    params:
+      - "{{order_id}}"
+    validations:
+      - type: result_count
+        min: 1
+
+  # Stored Procedure Call
+  - type: jdbc_request
+    name: Calculate Order Total
+    query: CALL calculate_order_total(?)
+    params:
+      - "{{order_id}}"
+    validations:
+      - type: execution_success
+        value: true

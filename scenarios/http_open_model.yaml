@@ -1,0 +1,53 @@
+# HTTP REST API - Open Model (Users Per Second)
+name: API Stress Test - Constant Rate
+description: High-throughput API test with constant users per second (open model)
+
+protocols:
+  http:
+    base_url: https://api.example.com
+    headers:
+      Accept: application/json
+    timeout: 10s
+    connection_pool:
+      max_idle_per_host: 100
+      idle_timeout: 90s
+
+load_model:
+  type: constant_users_per_sec
+  rate: 50              # 50 new users per second
+  duration: 3m
+
+feeders:
+  - type: csv
+    name: api_keys
+    path: data/api_keys.csv
+    strategy: random
+
+flow:
+  - type: http_request
+    name: Search API
+    method: GET
+    path: /search?q={{search_term}}&limit=20
+    headers:
+      X-API-Key: "{{api_key}}"
+    validations:
+      - type: status_code
+        value: 200
+      - type: response_time
+        max: 500ms
+      - type: json_path
+        path: $.results
+        exists: true
+
+  - type: wait
+    duration: 100ms
+
+  - type: http_request
+    name: Get Details
+    method: GET
+    path: /items/{{item_id}}
+    headers:
+      X-API-Key: "{{api_key}}"
+    validations:
+      - type: status_code
+        value: 200

@@ -1,0 +1,29 @@
+# Rust
+/target/
+**/*.rs.bak
+Cargo.lock
+*.o
+*.so
+*.a
+*.dylib
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.DS_Store
+
+# Test outputs
+test_output/
+build_err.txt
+build_output.txt
+build.log
+
+# Local data
+example_live_stats.json
+check_*.rs
+test_*.py
+*.db
+*.parquet

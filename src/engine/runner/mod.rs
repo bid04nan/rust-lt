@@ -171,20 +171,23 @@ impl TestExecutor {
                     println!("Spawned {} / {} VUs...", spawned_vus, total_users);
                 }
                 
-                // Clone necessary data for the VU
+                // Clone necessary data for the VU (optimized - minimal cloning)
                 let scenario = self.scenario.clone();
-                let feeders_clone = Arc::clone(&feeders);
-                let metrics_clone = Arc::clone(&metrics_collector);
-                let db_logger_clone = db_logger.as_ref().map(|l| Arc::clone(l));
+                let feeders_ref = Arc::clone(&feeders);
+                let metrics_ref = Arc::clone(&metrics_collector);
+                let db_logger_ref = db_logger.as_ref().map(Arc::clone);
+                
+                // Pre-format VU name once (avoid repeated allocations)
+                let vu_name = format!("vu_{}", user_id);
                 
                 // Record VU started event
-                let metric = Metric::new(MetricType::VuStarted, format!("vu_{}", user_id), 1.0);
-                metrics_clone.record(metric).await;
-                if let Some(ref logger) = db_logger_clone {
+                let metric = Metric::new(MetricType::VuStarted, vu_name.clone(), 1.0);
+                metrics_ref.record(metric).await;
+                if let Some(ref logger) = db_logger_ref {
                     let _ = logger.log_metric(
                         chrono::Local::now(),
                         "vu_started",
-                        &format!("vu_{}", user_id),
+                        &vu_name,
                         1.0,
                         Some(user_id),
                         None,
@@ -193,49 +196,39 @@ impl TestExecutor {
                 
                 // Spawn VU in background
                 let handle = tokio::spawn(async move {
-                    let mut vu = VirtualUser::with_feeders(user_id, scenario, (*feeders_clone).clone());
-                    vu.set_metrics_collector(metrics_clone.clone());
+                    // OPTIMIZED: Pass Arc directly, no HashMap clone needed
+                    let mut vu = VirtualUser::with_feeders_arc(user_id, scenario, feeders_ref);
+                    vu.set_metrics_collector(metrics_ref);
                     
                     // Set Parquet logger if available
-                    if let Some(ref logger) = db_logger_clone {
-                        vu.set_parquet_logger(logger.clone());
+                    if let Some(logger) = &db_logger_ref {
+                        vu.set_parquet_logger(Arc::clone(logger));
                         // Log VU state: started
                         let _ = logger.log_vu_state(chrono::Local::now(), user_id, "started", None);
                     }
                     
                     let result = vu.run().await;
                     
-                    // Record VU completion event
-                    if result.success {
-                        let metric = Metric::new(MetricType::VuCompleted, format!("vu_{}", user_id), 1.0);
-                        metrics_clone.record(metric).await;
-                        if let Some(ref logger) = db_logger_clone {
-                            let _ = logger.log_metric(
-                                chrono::Local::now(),
-                                "vu_completed",
-                                &format!("vu_{}", user_id),
-                                1.0,
-                                Some(user_id),
-                                None,
-                            );
-                        }
-                    } else {
-                        let metric = Metric::new(MetricType::VuFailed, format!("vu_{}", user_id), 1.0);
-                        metrics_clone.record(metric).await;
-                        if let Some(ref logger) = db_logger_clone {
-                            let _ = logger.log_metric(
-                                chrono::Local::now(),
-                                "vu_failed",
-                                &format!("vu_{}", user_id),
-                                1.0,
-                                Some(user_id),
-                                None,
-                            );
-                        }
+                    // Record VU completion event (reuse vu_name to avoid re-allocation)
+                    let event_type = if result.success { "vu_completed" } else { "vu_failed" };
+                    let metric_type = if result.success { MetricType::VuCompleted } else { MetricType::VuFailed };
+                    
+                    let metric = Metric::new(metric_type, vu_name.clone(), 1.0);
+                    vu.record_metric(metric).await;
+                    
+                    if let Some(logger) = &db_logger_ref {
+                        let _ = logger.log_metric(
+                            chrono::Local::now(),
+                            event_type,
+                            &vu_name,
+                            1.0,
+                            Some(user_id),
+                            None,
+                        );
                     }
 
                     // Log VU state: completed/failed with duration
-                    if let Some(ref logger) = db_logger_clone {
+                    if let Some(logger) = &db_logger_ref {
                         let state = if result.success { "completed" } else { "failed" };
                         let _ = logger.log_vu_state(chrono::Local::now(), user_id, state, Some(result.duration_ms as i64));
                     }

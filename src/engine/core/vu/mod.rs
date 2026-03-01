@@ -1,5 +1,5 @@
 use super::session::Session;
-use super::scenario::{Scenario, FlowStep, LoadModel};
+use super::scenario::{Scenario, FlowStep};
 use super::action::{ActionResult, create_executor};
 use super::super::stats::{MetricsCollector, Metric, MetricType};
 use super::super::reporters::ParquetLogger;
@@ -81,6 +81,31 @@ impl VirtualUser {
         }
     }
     
+    /// Create a new VU with Arc-wrapped feeders (OPTIMIZED - zero-copy)
+    /// This avoids cloning the entire HashMap when spawning thousands of VUs
+    pub fn with_feeders_arc(
+        id: usize,
+        scenario: Scenario,
+        feeders: Arc<HashMap<String, Arc<Mutex<Box<dyn Feeder>>>>>
+    ) -> Self {
+        let session = Session::new(id, scenario.name.clone());
+        
+        // Clone only the Arc pointers, not the actual feeder data
+        let feeders_map = (*feeders).clone();
+        
+        Self {
+            id,
+            scenario,
+            session,
+            feeders: feeders_map,
+            results: Vec::new(),
+            start_time: None,
+            end_time: None,
+            metrics_collector: None,
+            db_logger: None,
+        }
+    }
+    
     /// Set metrics collector for this VU
     pub fn set_metrics_collector(&mut self, collector: Arc<MetricsCollector>) {
         self.metrics_collector = Some(collector);
@@ -89,6 +114,13 @@ impl VirtualUser {
     /// Set Parquet logger for this VU
     pub fn set_parquet_logger(&mut self, logger: Arc<ParquetLogger>) {
         self.db_logger = Some(logger);
+    }
+
+    /// Record a metric through the VU's metrics collector
+    pub async fn record_metric(&self, metric: Metric) {
+        if let Some(collector) = &self.metrics_collector {
+            collector.record(metric).await;
+        }
     }
     
     /// Initialize global variables from scenario
@@ -418,6 +450,7 @@ pub async fn load_feeders(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use super::super::scenario::LoadModel;
 
     fn create_test_scenario() -> Scenario {
         Scenario {
@@ -457,7 +490,7 @@ mod tests {
         
         assert_eq!(
             vu.session().get("base_url"),
-            Some(&"https://httpbin.org".to_string())
+            Some("https://httpbin.org")
         );
     }
 

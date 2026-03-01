@@ -1,7 +1,8 @@
 use async_trait::async_trait;
-use rand::seq::SliceRandom;
+use rand::Rng;
 use std::collections::HashMap;
 use std::error::Error;
+use std::sync::atomic::{AtomicUsize, Ordering};
 
 use super::{DataRow, Feeder, FeederConfig, FeederStrategy};
 
@@ -10,6 +11,8 @@ pub struct CsvFeeder {
     data: Vec<DataRow>,
     strategy: FeederStrategy,
     cursor: usize,
+    /// Atomic cursor for lock-free cyclic/sequential access
+    atomic_cursor: AtomicUsize,
     headers: Vec<String>,
 }
 
@@ -74,11 +77,11 @@ impl CsvFeeder {
             data,
             strategy,
             cursor: 0,
+            atomic_cursor: AtomicUsize::new(0),
             headers,
         })
     }
 }
-
 #[async_trait]
 impl Feeder for CsvFeeder {
     async fn next_row(&mut self) -> Option<DataRow> {
@@ -88,22 +91,25 @@ impl Feeder for CsvFeeder {
 
         match self.strategy {
             FeederStrategy::Sequential => {
-                if self.cursor >= self.data.len() {
+                // Use atomic for lock-free sequential access
+                let idx = self.atomic_cursor.fetch_add(1, Ordering::Relaxed);
+                if idx >= self.data.len() {
                     None
                 } else {
-                    let row = self.data.get(self.cursor).cloned();
-                    self.cursor += 1;
-                    row
+                    self.data.get(idx).cloned()
                 }
             }
             FeederStrategy::Random => {
+                // OPTIMIZED: Use faster random index generation
+                // Avoids SliceRandom overhead and potential lock contention
                 let mut rng = rand::thread_rng();
-                self.data.choose(&mut rng).cloned()
+                let idx = rng.gen_range(0..self.data.len());
+                self.data.get(idx).cloned()
             }
             FeederStrategy::Cyclic => {
-                let row = self.data.get(self.cursor).cloned();
-                self.cursor = (self.cursor + 1) % self.data.len();
-                row
+                // Use atomic for lock-free cyclic access
+                let idx = self.atomic_cursor.fetch_add(1, Ordering::Relaxed) % self.data.len();
+                self.data.get(idx).cloned()
             }
         }
     }
@@ -114,6 +120,7 @@ impl Feeder for CsvFeeder {
 
     fn reset(&mut self) {
         self.cursor = 0;
+        self.atomic_cursor.store(0, Ordering::Relaxed);
     }
 }
 
@@ -144,6 +151,7 @@ mod tests {
             data: create_test_data(),
             strategy: FeederStrategy::Sequential,
             cursor: 0,
+            atomic_cursor: AtomicUsize::new(0),
             headers: vec!["name".to_string(), "age".to_string()],
         };
 
@@ -159,6 +167,7 @@ mod tests {
             data: create_test_data(),
             strategy: FeederStrategy::Cyclic,
             cursor: 0,
+            atomic_cursor: AtomicUsize::new(0),
             headers: vec!["name".to_string(), "age".to_string()],
         };
 
@@ -174,6 +183,7 @@ mod tests {
             data: create_test_data(),
             strategy: FeederStrategy::Random,
             cursor: 0,
+            atomic_cursor: AtomicUsize::new(0),
             headers: vec!["name".to_string(), "age".to_string()],
         };
 
@@ -189,15 +199,16 @@ mod tests {
             data: create_test_data(),
             strategy: FeederStrategy::Sequential,
             cursor: 0,
+            atomic_cursor: AtomicUsize::new(0),
             headers: vec!["name".to_string(), "age".to_string()],
         };
 
         feeder.next_row().await;
         feeder.next_row().await;
-        assert_eq!(feeder.cursor, 2);
+        assert_eq!(feeder.atomic_cursor.load(Ordering::Relaxed), 2);
 
         feeder.reset();
-        assert_eq!(feeder.cursor, 0);
+        assert_eq!(feeder.atomic_cursor.load(Ordering::Relaxed), 0);
         assert_eq!(feeder.next_row().await.unwrap()["name"], "Alice");
     }
 }

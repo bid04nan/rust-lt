@@ -1,5 +1,6 @@
 use std::collections::HashMap;
 use std::sync::Arc;
+use std::borrow::Cow;
 use regex::Regex;
 use tokio::sync::Mutex;
 
@@ -11,7 +12,8 @@ pub struct Session {
     pub user_id: usize,
     
     /// Session-scoped variables (extracted values, feeder data, etc.)
-    variables: HashMap<String, String>,
+    /// OPTIMIZED: Using Cow to avoid unnecessary string clones for static/readonly values
+    variables: HashMap<String, Cow<'static, str>>,
     
     /// Connection pool or state that can be shared across requests
     /// Each protocol can store its own connection state here
@@ -39,20 +41,25 @@ impl Session {
         }
     }
 
-    /// Set a variable in the session
+    /// Set a variable in the session (owned string)
     pub fn set(&mut self, key: String, value: String) {
-        self.variables.insert(key, value);
+        self.variables.insert(key, Cow::Owned(value));
+    }
+    
+    /// Set a static variable (zero-copy for constants)
+    pub fn set_static(&mut self, key: String, value: &'static str) {
+        self.variables.insert(key, Cow::Borrowed(value));
     }
 
     /// Get a variable from the session
-    pub fn get(&self, key: &str) -> Option<&String> {
-        self.variables.get(key)
+    pub fn get(&self, key: &str) -> Option<&str> {
+        self.variables.get(key).map(|v| v.as_ref())
     }
 
     /// Set multiple variables at once (useful for feeder data)
     pub fn set_all(&mut self, data: HashMap<String, String>) {
         for (key, value) in data {
-            self.variables.insert(key, value);
+            self.variables.insert(key, Cow::Owned(value));
         }
     }
 
@@ -64,7 +71,7 @@ impl Session {
             let var_name = &caps[1];
             self.variables
                 .get(var_name)
-                .map(|v| v.as_str())
+                .map(|v| v.as_ref())
                 .unwrap_or_else(|| {
                     eprintln!("Warning: Variable '{}' not found in session", var_name);
                     ""
@@ -112,7 +119,7 @@ impl Session {
     }
 
     /// Get all variables as a reference (useful for logging/debugging)
-    pub fn get_all_variables(&self) -> &HashMap<String, String> {
+    pub fn get_all_variables(&self) -> &HashMap<String, Cow<'static, str>> {
         &self.variables
     }
 
@@ -122,7 +129,7 @@ impl Session {
     }
 
     /// Remove a variable from the session
-    pub fn remove(&mut self, key: &str) -> Option<String> {
+    pub fn remove(&mut self, key: &str) -> Option<Cow<'static, str>> {
         self.variables.remove(key)
     }
 }
@@ -145,7 +152,7 @@ mod tests {
         
         // Set and get
         session.set("username".to_string(), "alice".to_string());
-        assert_eq!(session.get("username"), Some(&"alice".to_string()));
+        assert_eq!(session.get("username"), Some("alice"));
         
         // Has variable
         assert!(session.has_variable("username"));
@@ -153,7 +160,7 @@ mod tests {
         
         // Remove
         let removed = session.remove("username");
-        assert_eq!(removed, Some("alice".to_string()));
+        assert_eq!(removed.as_ref().map(|s| s.as_ref()), Some("alice"));
         assert!(!session.has_variable("username"));
     }
 
@@ -167,8 +174,8 @@ mod tests {
         
         session.set_all(data);
         
-        assert_eq!(session.get("user"), Some(&"bob".to_string()));
-        assert_eq!(session.get("email"), Some(&"bob@example.com".to_string()));
+        assert_eq!(session.get("user"), Some("bob"));
+        assert_eq!(session.get("email"), Some("bob@example.com"));
     }
 
     #[test]
